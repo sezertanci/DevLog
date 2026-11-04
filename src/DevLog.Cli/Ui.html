@@ -1,0 +1,1280 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>devlog</title>
+<style>
+  :root {
+    /* Tarayicinin kendi bilesenleri (takvim, acilir liste, kaydirma cubugu)
+       CSS ile boyanamaz; koyu varyantlarini kullanmalari icin renk semasi bildiriliyor. */
+    color-scheme: dark;
+    accent-color: #83b6ff;
+
+    --bg: #262a32;
+    --panel: #2e333c;
+    --panel-2: #373d48;
+    --line: #454c58;
+    --text: #e9ecf1;
+    --text-2: #c4ccd8;
+    --muted: #97a1b0;
+    --accent: #83b6ff;
+    --ok: #6fdc7e;
+    --warn: #efc76a;
+    --danger: #ff7b72;
+    --accent-yazi: #0b1220;   /* vurgu ve tehlike zemini uzerindeki yazi */
+    --pill-open: #3c5f96;
+    --pill-done: #2f7440;
+    --pill-high: #816831;
+    --overlay: rgba(26, 29, 36, .72);
+    --overlay-soft: rgba(26, 29, 36, .58);
+  }
+
+  :root[data-theme="light"] {
+    color-scheme: light;
+    accent-color: #2f6fd0;
+
+    --bg: #e7ebf1;
+    --panel: #f7f9fb;
+    --panel-2: #dde3ec;
+    --line: #c2cad6;
+    --text: #161c25;
+    --text-2: #3b4655;
+    --muted: #5d6879;
+    --accent: #2563c4;
+    --ok: #1a7a35;
+    --warn: #7d5900;
+    --danger: #b32f26;
+    --accent-yazi: #ffffff;
+    --pill-open: #8fb0dd;
+    --pill-done: #86bd99;
+    --pill-high: #cdb374;
+    --overlay: rgba(96, 108, 124, .55);
+    --overlay-soft: rgba(96, 108, 124, .40);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.55 "Segoe UI", system-ui, sans-serif;
+  }
+  header {
+    display: flex; align-items: center; gap: 24px;
+    padding: 14px 22px; border-bottom: 1px solid var(--line); background: var(--panel);
+    position: sticky; top: 0; z-index: 5;
+  }
+  h1 {
+    font-size: 17px; margin: 0; letter-spacing: .5px;
+    display: flex; align-items: baseline; gap: 8px; min-width: 0;
+  }
+  h1 span {
+    color: var(--muted); font-weight: 400; font-size: 13px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 340px;
+  }
+  nav { display: flex; gap: 4px; }
+  nav button {
+    background: none; border: 0; color: var(--muted); padding: 7px 14px;
+    border-radius: 7px; cursor: pointer; font-size: 15px;
+  }
+  nav button:hover { color: var(--text); background: var(--panel-2); }
+  nav button.active { background: var(--panel-2); color: var(--text); }
+  .header-actions { margin-left: auto; display: flex; gap: 8px; }
+  #theme, #refresh {
+    background: var(--panel-2); border: 1px solid var(--line);
+    color: var(--muted); border-radius: 8px; width: 34px; height: 31px;
+    cursor: pointer; font-size: 17px; line-height: 1;
+  }
+  #theme:hover, #refresh:hover { color: var(--text); border-color: var(--muted); }
+  #refresh.spinning { animation: don .5s linear; }
+  @keyframes don { to { transform: rotate(360deg); } }
+  main { padding: 22px; }
+  .filters {
+    display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 16px;
+  }
+  select, input[type=text], input[type=date] {
+    background: var(--panel); color: var(--text); border: 1px solid var(--line);
+    border-radius: 7px; padding: 7px 10px; font-size: 14px; font-family: inherit;
+  }
+  input[type=text] { min-width: 230px; }
+  input[type=date] { cursor: pointer; }
+  .new-btn {
+    background: var(--accent); border: 1px solid var(--accent); color: var(--accent-yazi);
+    border-radius: 7px; width: 34px; height: 34px; cursor: pointer;
+    font-size: 20px; line-height: 1; font-weight: 600;
+  }
+  .new-btn:hover { filter: brightness(1.1); }
+  .totals {
+    margin-left: auto; color: var(--muted); font-size: 14px;
+  }
+  .totals b { color: var(--text); font-size: 16px; }
+  /* table-layout: fixed -> sabit genisliklere uyulur, kalan yeri esnek sutun alir;
+     boylece uzun dosya yollari tabloyu ekran disina tasiramaz */
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  /* Dar pencerede sutunlari ezmek yerine yatay kaydirma */
+  .table-box { overflow-x: auto; }
+  #tab-todos table, #tab-work table { min-width: 1020px; }
+  .table-box.scrollable { cursor: grab; }
+  .table-box.dragging { cursor: grabbing; user-select: none; }
+  th {
+    text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .6px;
+    color: var(--muted); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--line);
+  }
+  th[data-sort] { cursor: pointer; user-select: none; white-space: nowrap; }
+  th[data-sort]:hover { color: var(--text); }
+  th.sorted { color: var(--accent); }
+  th .ok { font-size: 10px; }
+  td {
+    padding: 10px; border-bottom: 1px solid var(--line); vertical-align: top;
+    overflow-wrap: anywhere;
+  }
+  /* Yapiskan hucreler satirin zeminini miras alsin diye zemin satirda tanimli */
+  thead tr { background: var(--bg); }
+  tbody tr { background: var(--bg); }
+  tbody tr:hover { background: var(--panel); }
+
+  /* Dar pencerede kenar sutunlari yerinde kalir, ortadaki icerik kayar.
+     Hepsi sabitlenmez; sabitlenirse dar ekranda ortaya yer kalmaz. */
+  #tab-todos th:nth-child(1), #tab-todos td:nth-child(1),
+  #tab-work  th:nth-child(1), #tab-work  td:nth-child(1) {
+    position: sticky; left: 0; z-index: 2; background: inherit;
+  }
+  #tab-todos th:nth-child(2), #tab-todos td:nth-child(2) {
+    position: sticky; left: 60px; z-index: 2; background: inherit;
+    box-shadow: 1px 0 0 var(--line);
+  }
+  #tab-work th:nth-child(2), #tab-work td:nth-child(2) {
+    position: sticky; left: 60px; z-index: 2; background: inherit;
+    box-shadow: 1px 0 0 var(--line);
+  }
+  #tab-todos th:nth-child(7), #tab-todos td:nth-child(7),
+  #tab-work  th:nth-child(7), #tab-work  td:nth-child(7) {
+    position: sticky; right: 0; z-index: 2; background: inherit;
+    box-shadow: -1px 0 0 var(--line);
+  }
+  .id { color: var(--muted); font-family: Consolas, monospace; white-space: nowrap; }
+  .title { font-weight: 500; }
+  .sub { color: var(--text-2); font-size: 13px; margin-top: 3px; }
+  /* Uzun aciklamalar satiri asiri uzatmasin: 4 satirda kirpilir, "devami" ile acilir */
+  .detail {
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4;
+    line-clamp: 4; overflow: hidden;
+  }
+  .detail.expanded { display: block; -webkit-line-clamp: unset; line-clamp: unset; }
+  .more {
+    background: none; border: 0; color: var(--accent); cursor: pointer;
+    padding: 3px 0 0; font-size: 13px; font-family: inherit;
+  }
+  .more:hover { text-decoration: underline; }
+  .pill {
+    display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 12px;
+    border: 1px solid var(--line); color: var(--muted); white-space: nowrap;
+  }
+  .pill.open { color: var(--accent); border-color: var(--pill-open); }
+  .pill.done { color: var(--ok); border-color: var(--pill-done); }
+  .pill.dropped { color: var(--muted); }
+  .pill.high { color: var(--warn); border-color: var(--pill-high); }
+  .actions { display: flex; justify-content: flex-end; }
+  .menu-btn {
+    background: none; border: 1px solid transparent; color: var(--muted);
+    border-radius: 6px; padding: 2px 9px; cursor: pointer; font-size: 18px; line-height: 1.3;
+  }
+  .menu-btn:hover { color: var(--text); border-color: var(--line); background: var(--panel-2); }
+  #row-menu {
+    position: absolute; z-index: 20; min-width: 156px; padding: 5px;
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 9px;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, .32);
+  }
+  #row-menu button {
+    display: block; width: 100%; text-align: left; background: none; border: 0;
+    color: var(--text); padding: 8px 12px; border-radius: 6px; cursor: pointer;
+    font: inherit; font-size: 14px;
+  }
+  #row-menu button:hover { background: var(--panel); }
+  #row-menu button.done:hover { color: var(--ok); }
+  #row-menu button.del { color: var(--danger); }
+  #row-menu hr { border: 0; border-top: 1px solid var(--line); margin: 5px 0; }
+  .empty { color: var(--muted); padding: 40px 0; text-align: center; }
+  .pager {
+    display: flex; align-items: center; gap: 10px; justify-content: flex-end;
+    padding: 14px 4px; color: var(--muted); font-size: 14px;
+  }
+  .pager button {
+    background: var(--panel-2); border: 1px solid var(--line); color: var(--text);
+    border-radius: 6px; padding: 4px 12px; cursor: pointer; font-size: 15px;
+  }
+  .pager button:disabled { opacity: .35; cursor: default; }
+  .pager.top { padding: 0; }
+  .pager.top:empty { display: none; }
+  .modal-backdrop {
+    position: fixed; inset: 0; z-index: 10;
+    background: var(--overlay-soft); backdrop-filter: blur(4px);
+  }
+  .modal-box {
+    position: fixed; z-index: 11; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    width: min(680px, 92vw); max-height: 88vh; overflow-y: auto; padding: 22px;
+  }
+  .modal-box h2 { margin: 0 0 18px; font-size: 16px; }
+  .modal-box h2 small { color: var(--muted); font-weight: 400; margin-left: 8px; }
+  .field { margin-bottom: 14px; }
+  .field label {
+    display: block; color: var(--muted); font-size: 12px; text-transform: uppercase;
+    letter-spacing: .6px; margin-bottom: 5px;
+  }
+  .field input, .field textarea, .field select {
+    width: 100%; background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 7px; padding: 8px 10px; font: inherit;
+  }
+  .field textarea { min-height: 68px; resize: vertical; }
+  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+  .modal-actions button {
+    background: var(--panel-2); border: 1px solid var(--line); color: var(--text);
+    border-radius: 7px; padding: 8px 18px; cursor: pointer; font-size: 14px;
+  }
+  .modal-actions button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-yazi); font-weight: 600; }
+
+  /* Duzenleme penceresinde baslik ve dugmeler sabit; yalnizca alanlar kayar */
+  #modal .modal-box {
+    display: flex; flex-direction: column; overflow: hidden; padding: 0;
+  }
+  #modal .modal-box h2 {
+    margin: 0; padding: 18px 22px 14px; border-bottom: 1px solid var(--line);
+  }
+  #modal .modal-body { flex: 1; overflow-y: auto; padding: 18px 22px; }
+  #modal .modal-actions {
+    margin: 0; padding: 14px 22px; border-top: 1px solid var(--line);
+  }
+
+  /* onay penceresi ve bildirim */
+  #confirm .modal-backdrop { z-index: 40; }
+  #confirm .modal-box { z-index: 41; width: min(430px, 92vw); }
+  #confirm p { color: var(--text-2); margin: 0; line-height: 1.55; }
+  #confirm p b { color: var(--text); font-weight: 600; }
+  .modal-actions button.danger {
+    background: var(--danger); border-color: var(--danger); color: var(--accent-yazi); font-weight: 600;
+  }
+  #toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 50;
+    background: var(--panel-2); border: 1px solid var(--line); color: var(--text);
+    padding: 11px 18px; border-radius: 9px; font-size: 14px;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, .32);
+  }
+  #toast.error { border-color: var(--danger); color: var(--danger); }
+
+  /* ekran görüntüleri */
+  .attachments { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+  .attachment {
+    position: relative; width: 84px; height: 62px; border: 1px solid var(--line);
+    border-radius: 7px; overflow: hidden; background: var(--panel); cursor: zoom-in;
+  }
+  .attachment img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .attachment button {
+    position: absolute; top: 2px; right: 2px; width: 19px; height: 19px; padding: 0;
+    border: 0; border-radius: 5px; cursor: pointer; font-size: 13px; line-height: 1;
+    background: rgba(0, 0, 0, .65); color: var(--danger); opacity: 0; transition: opacity .12s;
+  }
+  .attachment:hover button { opacity: 1; }
+  .attachment.pending { border-style: dashed; border-color: var(--accent); }
+  .row-attachments { display: flex; gap: 5px; margin-top: 6px; }
+  .row-attachments img {
+    width: 46px; height: 34px; object-fit: cover; border: 1px solid var(--line);
+    border-radius: 5px; cursor: zoom-in; display: block;
+  }
+  .dropzone {
+    border: 1px dashed var(--line); border-radius: 8px; padding: 14px; text-align: center;
+    color: var(--muted); font-size: 13px; cursor: pointer; margin-top: 8px;
+  }
+  .dropzone:hover, .dropzone.over { border-color: var(--accent); color: var(--text); }
+  #lightbox {
+    position: fixed; inset: 0; z-index: 30;
+    /* Saf siyah yerine tema tonu + bulaniklik: arka plan kararmak yerine geri cekiliyor */
+    background: var(--overlay); backdrop-filter: blur(9px);
+    display: flex; align-items: center; justify-content: center; cursor: zoom-out;
+  }
+  #lightbox img { max-width: 90vw; max-height: 90vh; border-radius: 8px; cursor: default; }
+  #lightbox button {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    width: 46px; height: 78px; border: 0; border-radius: 9px; cursor: pointer;
+    background: var(--panel-2); border: 1px solid var(--line);
+    color: var(--text); font-size: 28px; line-height: 1;
+  }
+  #lightbox button:hover { background: var(--panel); border-color: var(--muted); }
+  #lightbox-prev { left: 22px; }
+  #lightbox-next { right: 22px; }
+  #lightbox-label {
+    position: absolute; top: 18px; left: 50%; transform: translateX(-50%);
+    max-width: 76vw; padding: 8px 16px; border-radius: 8px;
+    background: var(--panel); border: 1px solid var(--line);
+    color: var(--text); font-size: 15px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  #lightbox-label b {
+    color: var(--text); font-family: Consolas, monospace; font-weight: 600; margin-right: 10px;
+  }
+  #lightbox-counter {
+    position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+    color: var(--text-2); font-size: 14px; letter-spacing: .4px;
+  }
+  .bar { height: 8px; background: var(--accent); border-radius: 4px; min-width: 2px; }
+  /* id seciciyle tanimlanan display'leri de bastirmasi gerekiyor (ornegin #lightbox) */
+  .hidden { display: none !important; }
+  .mins { font-family: Consolas, monospace; white-space: nowrap; }
+  .repo { color: var(--text-2); font-size: 13px; }
+</style>
+<script>
+  // Tema, ilk boyamadan once uygulanir; aksi halde acik tema secili olsa bile
+  // sayfa bir an koyu gorunup titriyor.
+  try {
+    if (localStorage.getItem('devlog-theme') === 'light')
+      document.documentElement.dataset.theme = 'light';
+  } catch { /* depolama kapali olabilir */ }
+</script>
+</head>
+<body>
+
+<header>
+  <h1>devlog<span id="dbpath"></span></h1>
+  <nav>
+    <button data-tab="todos" class="active">Yapılacaklar</button>
+    <button data-tab="work">Çalışma Günlüğü</button>
+    <button data-tab="report">Rapor</button>
+  </nav>
+  <div class="header-actions">
+    <button id="refresh" title="Yenile">⟳</button>
+    <button id="theme" title="Açık temaya geç">☀</button>
+  </div>
+</header>
+
+<main>
+  <!-- TODOS -->
+  <section id="tab-todos">
+    <div class="filters">
+      <button class="new-btn" onclick="openCreator('todo')" title="Yeni madde">+</button>
+      <select id="todo-status">
+        <option value="open">Açık</option>
+        <option value="done">Tamamlanan</option>
+        <option value="dropped">Vazgeçilen</option>
+        <option value="">Tümü</option>
+      </select>
+      <select id="todo-repo"><option value="">Tüm repolar</option></select>
+      <input type="text" id="todo-search" placeholder="Başlık / açıklama ara...">
+      <div class="totals"><b id="todo-count">0</b> kayıt</div>
+      <div class="pager top" id="todo-pager-top"></div>
+    </div>
+    <div class="table-box">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:60px" data-sort="id">ID</th>
+          <th style="width:90px" data-sort="status">Durum</th>
+          <th data-sort="title">İş</th>
+          <th style="width:180px" data-sort="repo">Repo / Branch</th>
+          <th style="width:110px" data-sort="workItem">İş Maddesi</th>
+          <th style="width:100px" data-sort="createdAt">Tarih</th>
+          <th style="width:46px"></th>
+        </tr>
+      </thead>
+      <tbody id="todo-rows"></tbody>
+    </table>
+    </div>
+    <div class="empty hidden" id="todo-empty">Kayıt yok.</div>
+    <div class="pager" id="todo-pager"></div>
+  </section>
+
+  <!-- WORK -->
+  <section id="tab-work" class="hidden">
+    <div class="filters">
+      <button class="new-btn" onclick="openCreator('work')" title="Yeni kayıt">+</button>
+      <select id="work-range">
+        <option value="today" selected>Bugün</option>
+        <option value="week">Bu hafta</option>
+        <option value="month">Son 30 gün</option>
+        <option value="custom">Tarih aralığı</option>
+      </select>
+      <input type="date" id="work-from" class="hidden">
+      <input type="date" id="work-to" class="hidden">
+      <select id="work-repo"><option value="">Tüm repolar</option></select>
+      <div class="totals">Toplam <b id="work-total">0dk</b> · <span id="work-count">0</span> kayıt</div>
+      <div class="pager top" id="work-pager-top"></div>
+    </div>
+    <div class="table-box">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:60px" data-sort="id">ID</th>
+          <th style="width:110px" data-sort="date">Tarih</th>
+          <th style="width:90px" data-sort="minutes">Süre</th>
+          <th data-sort="summary">Özet</th>
+          <th style="width:150px" data-sort="repo">Repo</th>
+          <th style="width:110px" data-sort="workItem">İş Maddesi</th>
+          <th style="width:46px"></th>
+        </tr>
+      </thead>
+      <tbody id="work-rows"></tbody>
+    </table>
+    </div>
+    <div class="empty hidden" id="work-empty">Kayıt yok.</div>
+    <div class="pager" id="work-pager"></div>
+  </section>
+
+  <!-- REPORT -->
+  <section id="tab-report" class="hidden">
+    <div class="filters">
+      <select id="report-by">
+        <option value="day">Güne göre</option>
+        <option value="repo">Repoya göre</option>
+        <option value="workitem">İş maddesine göre</option>
+      </select>
+      <input type="date" id="report-from">
+      <input type="date" id="report-to">
+      <div class="totals">Toplam <b id="report-total">0dk</b></div>
+    </div>
+    <div class="table-box">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:220px">Grup</th>
+          <th style="width:110px">Süre</th>
+          <th style="width:80px">Kayıt</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="report-rows"></tbody>
+    </table>
+    </div>
+    <div class="empty hidden" id="report-empty">Kayıt yok.</div>
+  </section>
+</main>
+
+<div id="row-menu" class="hidden"></div>
+<div id="lightbox" class="hidden" onclick="closeLightbox()">
+  <div id="lightbox-label" onclick="event.stopPropagation()"></div>
+  <button id="lightbox-prev" title="Önceki (←)" onclick="galleryStep(-1, event)">‹</button>
+  <img id="lightbox-img" alt="" onclick="event.stopPropagation()">
+  <button id="lightbox-next" title="Sonraki (→)" onclick="galleryStep(1, event)">›</button>
+  <div id="lightbox-counter"></div>
+</div>
+
+<div id="confirm" class="hidden">
+  <div class="modal-backdrop" onclick="closeConfirm(false)"></div>
+  <div class="modal-box">
+    <h2 id="confirm-title"></h2>
+    <p id="confirm-text"></p>
+    <div class="modal-actions">
+      <button onclick="closeConfirm(false)">Vazgeç</button>
+      <button class="danger" id="confirm-yes" onclick="closeConfirm(true)">Sil</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="hidden"></div>
+<input type="file" id="file-input" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
+
+<div id="modal" class="hidden">
+  <div class="modal-backdrop" onclick="closeModal()"></div>
+  <div class="modal-box">
+    <h2 id="modal-title"></h2>
+    <div class="modal-body">
+      <div id="modal-fields"></div>
+      <div id="modal-attachments"></div>
+    </div>
+    <div class="modal-actions">
+      <button onclick="closeModal()">Vazgeç</button>
+      <button class="primary" onclick="saveModal()">Kaydet</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => (s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const api = (path, opts) => fetch(path, opts).then(r => r.json());
+
+function formatDuration(dk) {
+  dk = Number(dk) || 0;
+  const s = Math.floor(dk / 60), m = dk % 60;
+  if (s === 0) return m + 'dk';
+  return m === 0 ? s + 's' : s + 's ' + m + 'dk';
+}
+// Kayitlar yerel tarihle yazildigi icin burada da yerel tarih kullanilmali.
+// toISOString() UTC dondurur; UTC+3'te gece yarisindan sonra bir onceki gunu verir.
+function isoDate(d) {
+  const iki = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${iki(d.getMonth() + 1)}-${iki(d.getDate())}`;
+}
+function addDays(n) { const d = new Date(); d.setDate(d.getDate() + n); return isoDate(d); }
+function weekStart() {
+  const d = new Date();
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return isoDate(d);
+}
+
+// --- sekmeler ---
+let activeTab = 'todos';
+
+document.querySelectorAll('nav button').forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll('nav button').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    activeTab = b.dataset.tab;
+    ['todos', 'work', 'report'].forEach(t => $('tab-' + t).classList.toggle('hidden', t !== activeTab));
+    loadActive();
+  };
+});
+
+function loadActive() {
+  if (activeTab === 'todos') loadTodos();
+  else if (activeTab === 'work') loadWork();
+  else loadReport();
+}
+
+// --- tema ---
+function applyTheme(theme) {
+  const light = theme === 'light';
+  if (light) document.documentElement.dataset.theme = 'light';
+  else delete document.documentElement.dataset.theme;
+
+  $('theme').textContent = light ? '🌙' : '☀';
+  $('theme').title = light ? 'Koyu temaya geç' : 'Açık temaya geç';
+
+  try { localStorage.setItem('devlog-theme', light ? 'light' : 'dark'); } catch { /* onemli degil */ }
+}
+
+$('theme').onclick = () =>
+  applyTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
+
+applyTheme(document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
+
+$('refresh').onclick = () => {
+  const button = $('refresh');
+  button.classList.add('spinning');
+  setTimeout(() => button.classList.remove('spinning'), 500);
+  loadActive();
+};
+
+// --- yatay kaydirma: fare ile tutup surukleme ---
+// Surukleme yalnizca tablo gercekten tasiyorsa devreye girer; aksi halde
+// metin secimi normal calismaya devam eder.
+function updateScrollState() {
+  document.querySelectorAll('.table-box').forEach(box =>
+    box.classList.toggle('scrollable', box.scrollWidth > box.clientWidth + 1));
+}
+
+document.querySelectorAll('.table-box').forEach(box => {
+  let dragging = false, startX = 0, startScroll = 0;
+
+  const stopDrag = () => {
+    dragging = false;
+    box.classList.remove('dragging');
+  };
+
+  box.addEventListener('mousedown', e => {
+    if (e.button !== 0 || !box.classList.contains('scrollable')) return;
+    if (e.target.closest('button, a, input, select, textarea, img')) return;
+
+    dragging = true;
+    startX = e.pageX;
+    startScroll = box.scrollLeft;
+  });
+
+  box.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const delta = e.pageX - startX;
+    if (!box.classList.contains('dragging')) {
+      if (Math.abs(delta) < 4) return;          // kucuk hareketi tiklama say
+      box.classList.add('dragging');
+    }
+    e.preventDefault();
+    box.scrollLeft = startScroll - delta;
+  });
+
+  box.addEventListener('mouseleave', stopDrag);
+  window.addEventListener('mouseup', stopDrag);
+});
+
+// Yerlesim tamamlandiktan sonra olc; resize aninda okunan genislik guvenilir degil.
+window.addEventListener('resize', () => requestAnimationFrame(updateScrollState));
+
+// --- onay penceresi ve bildirim ---
+let confirmResolve = null;
+
+function confirmDialog(title, metinHtml) {
+  $('confirm-title').textContent = title;
+  $('confirm-text').innerHTML = metinHtml;
+  $('confirm').classList.remove('hidden');
+  $('confirm-yes').focus();
+  return new Promise(cozucu => { confirmResolve = cozucu; });
+}
+
+function closeConfirm(result) {
+  $('confirm').classList.add('hidden');
+  if (confirmResolve) { confirmResolve(result); confirmResolve = null; }
+}
+
+let notifyTimer = null;
+
+function notify(text, hataMi = false) {
+  const el = $('toast');
+  el.textContent = text;
+  el.classList.toggle('error', hataMi);
+  el.classList.remove('hidden');
+  clearTimeout(notifyTimer);
+  notifyTimer = setTimeout(() => el.classList.add('hidden'), 3500);
+}
+
+// --- sıralama ---
+// alan null ise sunucunun varsayılan sıralaması kullanılır
+// (yapılacaklar: öncelik + id, günlük: tarih + id)
+const sort = {
+  todo: { field: null, yon: 'desc' },
+  work: { field: null, yon: 'desc' }
+};
+
+// bu alanlara ilk tıklandığında büyükten küçüğe sıralanır
+const DESC_FIRST = new Set(['id', 'createdAt', 'date', 'minutes']);
+
+function onSortClick(tip, field) {
+  const s = sort[tip];
+  const first = DESC_FIRST.has(field) ? 'desc' : 'asc';
+
+  if (s.field !== field) {
+    s.field = field;
+    s.yon = first;
+  } else if (s.yon === first) {
+    s.yon = first === 'asc' ? 'desc' : 'asc';
+  } else {
+    s.field = null;           // üçüncü tıklama: varsayılana dön
+  }
+
+  paging[tip].offset = 0;
+  if (tip === 'todo') loadTodos(); else loadWork();
+}
+
+function applySortParams(tip, qs) {
+  const s = sort[tip];
+  if (!s.field) return;
+  qs.set('sort', s.field);
+  qs.set('dir', s.yon);
+}
+
+function renderSortHeaders(tip) {
+  const scope = tip === 'todo' ? '#tab-todos' : '#tab-work';
+  document.querySelectorAll(`${scope} th[data-sort]`).forEach(th => {
+    const active = sort[tip].field === th.dataset.sort;
+    th.classList.toggle('sorted', active);
+    th.querySelector('.ok')?.remove();
+    if (!active) return;
+    const ok = document.createElement('span');
+    ok.className = 'ok';
+    ok.textContent = sort[tip].yon === 'asc' ? ' ▲' : ' ▼';
+    th.appendChild(ok);
+  });
+}
+
+document.querySelectorAll('#tab-todos th[data-sort]')
+  .forEach(th => th.onclick = () => onSortClick('todo', th.dataset.sort));
+document.querySelectorAll('#tab-work th[data-sort]')
+  .forEach(th => th.onclick = () => onSortClick('work', th.dataset.sort));
+
+// --- sayfalama ---
+const paging = {
+  todo: { offset: 0, limit: 10, total: 0 },
+  work: { offset: 0, limit: 10, total: 0 }
+};
+
+// Ayni sayfalama hem tablonun ustune hem altina cizilir.
+function renderPager(elemanId, s, fn) {
+  const from = s.offset + 1;
+  const to = Math.min(s.offset + s.limit, s.total);
+
+  [elemanId, elemanId + '-top'].forEach(id => {
+    const el = $(id);
+    if (!el) return;
+
+    if (s.total <= s.limit) { el.innerHTML = ''; return; }
+
+    el.innerHTML = `
+      <button ${s.offset === 0 ? 'disabled' : ''} data-dir="-1">‹</button>
+      <span>${from}–${to} / ${s.total}</span>
+      <button ${to >= s.total ? 'disabled' : ''} data-dir="1">›</button>`;
+
+    el.querySelectorAll('button').forEach(b => b.onclick = () => {
+      s.offset = Math.max(0, s.offset + Number(b.dataset.dir) * s.limit);
+      fn();
+      window.scrollTo({ top: 0 });
+    });
+  });
+}
+
+// --- todos ---
+let todoCache = [];
+let searchTimer = null;
+
+async function loadTodos() {
+  const qs = new URLSearchParams({ limit: paging.todo.limit, offset: paging.todo.offset });
+  if ($('todo-status').value) qs.set('status', $('todo-status').value);
+  if ($('todo-repo').value) qs.set('repo', $('todo-repo').value);
+  if ($('todo-search').value.trim()) qs.set('q', $('todo-search').value.trim());
+  applySortParams('todo', qs);
+
+  const r = await api('/api/todos?' + qs);
+  todoCache = r.rows;
+  paging.todo.total = r.total;
+
+  $('todo-count').textContent = r.total;
+  $('todo-empty').classList.toggle('hidden', r.rows.length > 0);
+
+  $('todo-rows').innerHTML = r.rows.map(t => `
+    <tr>
+      <td class="id">${esc(t.id)}</td>
+      <td>
+        <span class="pill ${esc(t.status)}">${esc(optionLabel("status", t.status))}</span>
+        ${t.priority === 'high' ? '<span class="pill high">Yüksek</span>' : ''}
+      </td>
+      <td>
+        <div class="title">${esc(t.title)}</div>
+        <div class="detail">
+          ${t.description ? `<div class="sub">${esc(t.description)}</div>` : ''}
+          ${t.suggestion ? `<div class="sub">Öneri: ${esc(t.suggestion)}</div>` : ''}
+          ${t.files ? `<div class="sub">${esc(t.files)}</div>` : ''}
+          ${t.closedBy ? `<div class="sub">Kapatan: ${esc(t.closedBy)}</div>` : ''}
+        </div>
+        <button class="more hidden" onclick="toggleDetail(event)">devamı</button>
+        ${thumbnails(t.attachments)}
+      </td>
+      <td class="repo">${esc(t.repo)}<div class="sub">${esc(t.branch)}</div></td>
+      <td class="repo">${esc(t.workItem)}</td>
+      <td class="repo">${esc((t.createdAt || '').slice(0, 10))}</td>
+      <td>
+        <div class="actions">
+          <button class="menu-btn" onclick="openRowMenu(event,'todo','${t.id}')" title="İşlemler">⋯</button>
+        </div>
+      </td>
+    </tr>`).join('');
+
+  renderPager('todo-pager', paging.todo, loadTodos);
+  updateScrollState();
+  updateMoreButtons('#todo-rows');
+  renderSortHeaders('todo');
+}
+
+async function todoAction(id, aksiyon) {
+  await api(`/api/todos/${id}/${aksiyon}`, { method: 'POST' });
+  loadTodos();
+}
+
+async function deleteTodo(id, title, attachmentCount) {
+  const attachmentNote = attachmentCount ? ` ${attachmentCount} ekran görüntüsü de silinecek.` : '';
+  const confirmed = await confirmDialog(`${id} silinecek`,
+    `<b>${esc(title)}</b><br><br>Bu kayıt kalıcı olarak silinecek, geri alınamaz.${attachmentNote}`);
+
+  if (!confirmed) return;
+  await api(`/api/todos/${id}`, { method: 'DELETE' });
+  notify(`${id} silindi.`);
+  loadTodos();
+}
+
+function onTodoFilter() { paging.todo.offset = 0; loadTodos(); }
+$('todo-status').onchange = onTodoFilter;
+$('todo-repo').onchange = onTodoFilter;
+$('todo-search').oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeout(onTodoFilter, 250); };
+
+// --- work ---
+let workCache = [];
+
+function workRange() {
+  const r = $('work-range').value;
+  if (r === 'today') return [isoDate(new Date()), isoDate(new Date())];
+  if (r === 'week') return [weekStart(), isoDate(new Date())];
+  if (r === 'month') return [addDays(-30), isoDate(new Date())];
+  return [$('work-from').value, $('work-to').value];
+}
+
+async function loadWork() {
+  const ozel = $('work-range').value === 'custom';
+  $('work-from').classList.toggle('hidden', !ozel);
+  $('work-to').classList.toggle('hidden', !ozel);
+
+  const [from, to] = workRange();
+  const qs = new URLSearchParams({ limit: paging.work.limit, offset: paging.work.offset });
+  if (from) qs.set('from', from);
+  if (to) qs.set('to', to);
+  if ($('work-repo').value) qs.set('repo', $('work-repo').value);
+  applySortParams('work', qs);
+
+  const r = await api('/api/work?' + qs);
+  workCache = r.rows;
+  paging.work.total = r.total;
+
+  $('work-count').textContent = r.total;
+  $('work-total').textContent = formatDuration(r.totalMinutes);
+  $('work-empty').classList.toggle('hidden', r.rows.length > 0);
+
+  $('work-rows').innerHTML = r.rows.map(w => `
+    <tr>
+      <td class="id">${esc(w.id)}</td>
+      <td class="repo">${esc(w.date)}</td>
+      <td class="mins">${formatDuration(w.minutes)}</td>
+      <td>
+        <div class="title">${esc(w.summary)}</div>
+        <div class="detail">
+          ${w.detail ? `<div class="sub">${esc(w.detail)}</div>` : ''}
+          ${w.linkedTodos ? `<div class="sub">Bağlı: ${esc(w.linkedTodos)}</div>` : ''}
+        </div>
+        <button class="more hidden" onclick="toggleDetail(event)">devamı</button>
+        ${thumbnails(w.attachments)}
+      </td>
+      <td class="repo">${esc(w.repo)}<div class="sub">${esc(w.branch)}</div></td>
+      <td class="repo">${esc(w.workItem)}</td>
+      <td>
+        <div class="actions">
+          <button class="menu-btn" onclick="openRowMenu(event,'work','${w.id}')" title="İşlemler">⋯</button>
+        </div>
+      </td>
+    </tr>`).join('');
+
+  renderPager('work-pager', paging.work, loadWork);
+  updateScrollState();
+  updateMoreButtons('#work-rows');
+  renderSortHeaders('work');
+}
+
+async function deleteWork(id, summary, attachmentCount) {
+  const attachmentNote = attachmentCount ? ` ${attachmentCount} ekran görüntüsü de silinecek.` : '';
+  const confirmed = await confirmDialog(`${id} silinecek`,
+    `<b>${esc(summary)}</b><br><br>Bu kayıt kalıcı olarak silinecek, geri alınamaz.${attachmentNote}`);
+
+  if (!confirmed) return;
+  await api(`/api/work/${id}`, { method: 'DELETE' });
+  notify(`${id} silindi.`);
+  loadWork();
+}
+
+function onWorkFilter() { paging.work.offset = 0; loadWork(); }
+$('work-range').onchange = onWorkFilter;
+$('work-repo').onchange = onWorkFilter;
+$('work-from').onchange = onWorkFilter;
+$('work-to').onchange = onWorkFilter;
+
+// --- satır işlem menüsü ---
+let menuRow = null, menuType = null;
+
+function openRowMenu(ev, tip, id) {
+  ev.stopPropagation();
+  menuType = tip;
+  menuRow = (tip === 'todo' ? todoCache : workCache).find(x => x.id === id);
+  if (!menuRow) return;
+
+  const items = [];
+  if (tip === 'todo' && menuRow.status === 'open') {
+    items.push(`<button class="done" onclick="runMenuAction('done')">Tamamlandı</button>`);
+    items.push(`<button onclick="runMenuAction('drop')">Vazgeç</button>`);
+  }
+  items.push(`<button onclick="runMenuAction('edit')">Düzenle</button>`);
+  items.push('<hr>');
+  items.push(`<button class="del" onclick="runMenuAction('sil')">Sil</button>`);
+
+  const m = $('row-menu');
+  m.innerHTML = items.join('');
+  m.classList.remove('hidden');
+
+  const box = ev.currentTarget.getBoundingClientRect();
+  m.style.top = (window.scrollY + box.bottom + 4) + 'px';
+  m.style.left = (window.scrollX + box.right - m.offsetWidth) + 'px';
+}
+
+function closeRowMenu() { $('row-menu').classList.add('hidden'); }
+
+function runMenuAction(ne) {
+  const record = menuRow, tip = menuType;
+  closeRowMenu();
+  if (!record) return;
+
+  if (ne === 'edit') return openEditor(tip, record.id);
+  if (ne === 'sil') return tip === 'todo'
+    ? deleteTodo(record.id, record.title, record.attachments?.length)
+    : deleteWork(record.id, record.summary, record.attachments?.length);
+  todoAction(record.id, ne);
+}
+
+document.addEventListener('click', closeRowMenu);
+window.addEventListener('scroll', closeRowMenu, true);
+
+// Veritabaninda ve CLI'da deger Ingilizce kalir; ekranda Turkce gosterilir.
+const LABELS = {
+  status: { open: 'Açık', done: 'Tamamlandı', dropped: 'Vazgeçildi' },
+  priority: { high: 'Yüksek', normal: 'Normal', low: 'Düşük' }
+};
+
+const optionLabel = (field, value) => LABELS[field]?.[value] ?? value;
+
+// --- ekran görüntüleri ---
+let attachmentsChanged = false;
+
+// "devami" dugmesi yalnizca metin gercekten kirpildiysa gosterilir.
+function updateMoreButtons(scope) {
+  document.querySelectorAll(`${scope} .detail`).forEach(detail => {
+    const button = detail.nextElementSibling;
+    if (!button || !button.classList.contains('more')) return;
+    button.classList.toggle('hidden', detail.scrollHeight <= detail.clientHeight + 2);
+  });
+}
+
+function toggleDetail(ev) {
+  ev.stopPropagation();
+  const button = ev.currentTarget;
+  const expanded = button.previousElementSibling.classList.toggle('expanded');
+  button.textContent = expanded ? 'daha az' : 'devamı';
+}
+
+function thumbnails(ids) {
+  if (!ids || !ids.length) return '';
+  return `<div class="row-attachments">` + ids.map(a =>
+    `<img src="/api/attachments/${a}/file" alt="" data-attachment="${a}" onclick="openLightbox(event,'${a}')">`).join('') + `</div>`;
+}
+
+// Buyutec, tiklanan kucuk resmin bulundugu gruptaki tum gorselleri gezebilir.
+let gallery = [];
+let galleryIndex = 0;
+let galleryLabel = '';
+
+function openLightbox(ev, id) {
+  ev.stopPropagation();
+  const container = ev.currentTarget.closest('.row-attachments, .attachments');
+  gallery = container ? [...container.querySelectorAll('img[data-attachment]')].map(i => i.dataset.attachment) : [id];
+  galleryIndex = Math.max(0, gallery.indexOf(id));
+  galleryLabel = ownerLabel(container);
+  showLightbox();
+}
+
+// Gorselin hangi kayda ait oldugunu bulur: satir seridinde ayni satirdan,
+// duzenleme penceresinde acik olan kayittan.
+function ownerLabel(container) {
+  const row = container?.closest('tr');
+  if (row) {
+    const id = row.querySelector('.id')?.textContent.trim() || '';
+    const title = row.querySelector('.title')?.textContent.trim() || '';
+    return `<b>${esc(id)}</b>${esc(title)}`;
+  }
+
+  if (!modalId) return '';
+  const record = (modalType === 'todo' ? todoCache : workCache).find(x => x.id === modalId);
+  return `<b>${esc(modalId)}</b>${esc(record?.title || record?.summary || '')}`;
+}
+
+function showLightbox() {
+  const many = gallery.length > 1;
+  $('lightbox-img').src = `/api/attachments/${gallery[galleryIndex]}/file`;
+  $('lightbox-label').innerHTML = galleryLabel;
+  $('lightbox-label').classList.toggle('hidden', !galleryLabel);
+  $('lightbox-counter').textContent = many ? `${galleryIndex + 1} / ${gallery.length}` : '';
+  $('lightbox-prev').classList.toggle('hidden', !many);
+  $('lightbox-next').classList.toggle('hidden', !many);
+  $('lightbox').classList.remove('hidden');
+}
+
+function galleryStep(step, ev) {
+  if (ev) ev.stopPropagation();
+  if (gallery.length < 2) return;
+  galleryIndex = (galleryIndex + step + gallery.length) % gallery.length;
+  showLightbox();
+}
+
+function closeLightbox() { $('lightbox').classList.add('hidden'); }
+
+// Panodan gelen görüntünün adı olmayabilir; uzantıyı MIME'dan türet.
+function makeFileName(blob, ad) {
+  if (ad && /\.(png|jpe?g|gif|webp)$/i.test(ad)) return ad;
+  const ext = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' }[blob.type] || 'png';
+  return `pano-${Date.now()}.${ext}`;
+}
+
+async function uploadAttachment(blob, name) {
+  const fileName = makeFileName(blob, name);
+
+  // Kayit henuz olusmadiysa bekletilir, saveModal sonrasinda yuklenir.
+  if (!modalId) {
+    pendingFiles.push({ blob, name: fileName, url: URL.createObjectURL(blob) });
+    return;
+  }
+
+  const response = await fetch(`/api/attachments?owner=${modalId}&name=${encodeURIComponent(fileName)}`,
+    { method: 'POST', body: blob });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    notify(error.error || 'Yükleme başarısız oldu.', true);
+    return;
+  }
+  attachmentsChanged = true;
+}
+
+async function deleteAttachment(ev, id) {
+  ev.stopPropagation();
+  const confirmed = await confirmDialog('Ekran görüntüsü silinecek',
+    `<b>${esc(id)}</b> kalıcı olarak silinecek, geri alınamaz.`);
+
+  if (!confirmed) return;
+  await api(`/api/attachments/${id}`, { method: 'DELETE' });
+  attachmentsChanged = true;
+  renderAttachments();
+}
+
+// Yeni kayitta henuz bir id yok; secilen gorseller bellekte bekletilir ve
+// kayit olustuktan hemen sonra yuklenir.
+let pendingFiles = [];
+
+function clearPending() {
+  pendingFiles.forEach(f => URL.revokeObjectURL(f.url));
+  pendingFiles = [];
+}
+
+function removePending(ev, index) {
+  ev.stopPropagation();
+  URL.revokeObjectURL(pendingFiles[index].url);
+  pendingFiles.splice(index, 1);
+  renderAttachments();
+}
+
+async function renderAttachments() {
+  const scope = $('modal-attachments');
+  const saved = modalId ? await api(`/api/attachments?owner=${modalId}`) : [];
+
+  scope.innerHTML = `
+    <div class="field">
+      <label>Ekran görüntüleri</label>
+      <div class="attachments">${saved.map(e => `
+        <div class="attachment" title="${esc(e.originalName)}">
+          <img src="/api/attachments/${e.id}/file" alt="" data-attachment="${e.id}" onclick="openLightbox(event,'${e.id}')">
+          <button title="Sil" onclick="deleteAttachment(event,'${e.id}')">✕</button>
+        </div>`).join('')}${pendingFiles.map((f, i) => `
+        <div class="attachment pending" title="${esc(f.name)} (kayıtla birlikte eklenecek)">
+          <img src="${f.url}" alt="">
+          <button title="Kaldır" onclick="removePending(event,${i})">✕</button>
+        </div>`).join('')}</div>
+      <div class="dropzone" id="dropzone">
+        Ekran görüntüsünü buraya <b>yapıştır (Ctrl+V)</b>, sürükle ya da tıklayıp seç
+      </div>
+    </div>`;
+
+  const field = $('dropzone');
+  field.onclick = () => $('file-input').click();
+  field.ondragover = e => { e.preventDefault(); field.classList.add('over'); };
+  field.ondragleave = () => field.classList.remove('over');
+  field.ondrop = async e => {
+    e.preventDefault();
+    field.classList.remove('over');
+    for (const file of e.dataTransfer.files) await uploadAttachment(file, file.name);
+    renderAttachments();
+  };
+}
+
+$('file-input').onchange = async e => {
+  for (const file of e.target.files) await uploadAttachment(file, file.name);
+  e.target.value = '';
+  renderAttachments();
+};
+
+document.addEventListener('paste', async e => {
+  // Yeni kayitta da calismali; olcut pencerenin acik olmasi, id'nin varligi degil.
+  if (!modalType) return;
+  const images = [...(e.clipboardData?.items || [])].filter(i => i.type.startsWith('image/'));
+  if (!images.length) return;
+
+  e.preventDefault();
+  for (const item of images) {
+    const blob = item.getAsFile();
+    if (blob) await uploadAttachment(blob, blob.name);
+  }
+  renderAttachments();
+});
+
+// --- düzenleme penceresi ---
+const FIELDS = {
+  todo: [
+    ['title', 'Başlık', 'text'],
+    ['description', 'Açıklama', 'textarea'],
+    ['suggestion', 'Öneri', 'textarea'],
+    ['repo', 'Repo', 'text'],
+    ['branch', 'Branch', 'text'],
+    ['workItem', 'İş maddesi', 'text'],
+    ['files', 'Dosyalar', 'text'],
+    ['priority', 'Öncelik', 'select:high,normal,low'],
+    ['status', 'Durum', 'select:open,done,dropped']
+  ],
+  work: [
+    ['summary', 'Özet', 'text'],
+    ['detail', 'Detay', 'textarea'],
+    ['date', 'Tarih', 'date'],
+    ['minutes', 'Süre (dakika)', 'number'],
+    ['repo', 'Repo', 'text'],
+    ['branch', 'Branch', 'text'],
+    ['workItem', 'İş maddesi', 'text'],
+    ['linkedTodos', 'Bağlı işler', 'text']
+  ]
+};
+
+let modalType = null, modalId = null;
+
+function openEditor(type, id) {
+  const record = (type === 'todo' ? todoCache : workCache).find(x => x.id === id);
+  if (!record) return;
+
+  modalType = type;
+  modalId = id;
+  $('modal-title').innerHTML = `Düzenle <small>${esc(id)}</small>`;
+  renderFields(type, record);
+
+  $('modal').classList.remove('hidden');
+  renderAttachments();
+}
+
+// Yeni kayit: ayni pencere bos alanlarla acilir. Secilen gorseller bellekte
+// bekletilir, kayit olusup id aldiktan hemen sonra yuklenir.
+function openCreator(type) {
+  modalType = type;
+  modalId = null;
+
+  const defaults = type === 'todo'
+    ? { priority: 'normal', status: 'open' }
+    : { date: isoDate(new Date()) };
+
+  $('modal-title').innerHTML = type === 'todo' ? 'Yeni madde' : 'Yeni çalışma kaydı';
+  renderFields(type, defaults);
+  renderAttachments();
+
+  $('modal').classList.remove('hidden');
+  document.querySelector('#modal-fields [data-field]')?.focus();
+}
+
+function renderFields(type, record) {
+  $('modal-fields').innerHTML = FIELDS[type].map(([name, label, kind]) => {
+    const value = record[name] == null ? '' : String(record[name]);
+    let input;
+    if (kind === 'textarea') {
+      input = `<textarea data-field="${name}">${esc(value)}</textarea>`;
+    } else if (kind.startsWith('select:')) {
+      input = `<select data-field="${name}">` + kind.slice(7).split(',')
+        .map(s => `<option value="${s}" ${s === value ? 'selected' : ''}>${optionLabel(name, s)}</option>`)
+        .join('') + `</select>`;
+    } else {
+      input = `<input type="${kind}" data-field="${name}" value="${esc(value)}">`;
+    }
+    return `<div class="field"><label>${label}</label>${input}</div>`;
+  }).join('');
+}
+
+function closeModal() {
+  $('modal').classList.add('hidden');
+  clearPending();
+  modalType = null;
+  modalId = null;
+
+  // Yalnizca ek eklendi/silindi ve kayit degismediyse listeyi yine de tazele.
+  if (attachmentsChanged) {
+    attachmentsChanged = false;
+    loadActive();
+  }
+}
+
+async function saveModal() {
+  const body = {};
+  $('modal-fields').querySelectorAll('[data-field]').forEach(el => body[el.dataset.field] = el.value);
+
+  const type = modalType;
+  const creating = !modalId;
+  const base = type === 'todo' ? '/api/todos' : '/api/work';
+
+  const response = await fetch(creating ? base : `${base}/${modalId}`, {
+    method: creating ? 'POST' : 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    notify(error.error || 'Kayıt başarısız oldu.', true);
+    return;
+  }
+
+  attachmentsChanged = false;   // asagida zaten tazeleniyor
+  const created = await response.json().catch(() => ({}));
+
+  // Yeni kayitta bekleyen gorseller ancak id olustuktan sonra yuklenebilir.
+  if (creating && pendingFiles.length) {
+    modalId = created.id;
+    for (const file of pendingFiles) await uploadAttachment(file.blob, file.name);
+  }
+
+  closeModal();
+  if (creating) notify(`${created.id} eklendi.`);
+  if (type === 'todo') loadTodos(); else loadWork();
+}
+
+document.addEventListener('keydown', e => {
+  const buyutecAcik = !$('lightbox').classList.contains('hidden');
+
+  if (buyutecAcik && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+    e.preventDefault();
+    galleryStep(e.key === 'ArrowLeft' ? -1 : 1);
+    return;
+  }
+
+  if (e.key !== 'Escape') return;
+  if (!$('confirm').classList.contains('hidden')) { closeConfirm(false); return; }
+  if (buyutecAcik) { closeLightbox(); return; }
+  closeRowMenu();
+  closeModal();
+});
+
+// --- rapor ---
+async function loadReport() {
+  const qs = new URLSearchParams({
+    by: $('report-by').value,
+    from: $('report-from').value,
+    to: $('report-to').value
+  });
+  const r = await api('/api/report?' + qs);
+  const groups = r.groups || [];
+  const max = Math.max(1, ...groups.map(g => g.minutes));
+
+  $('report-total').textContent = formatDuration(r.totalMinutes);
+  $('report-empty').classList.toggle('hidden', groups.length > 0);
+  $('report-rows').innerHTML = groups.map(g => `
+    <tr>
+      <td>${esc(g.key)}</td>
+      <td class="mins">${formatDuration(g.minutes)}</td>
+      <td class="repo">${g.entries}</td>
+      <td><div class="bar" style="width:${Math.round(g.minutes / max * 100)}%"></div></td>
+    </tr>`).join('');
+}
+
+$('report-by').onchange = loadReport;
+$('report-from').onchange = loadReport;
+$('report-to').onchange = loadReport;
+
+// Tarih alanlarinda kutunun her yeri takvimi acsin.
+// mousedown'da preventDefault odaklanmayi engeller; alan odaklanmadigi icin
+// gun/ay/yil parcasi da secili gorunmez. Tarih yalnizca takvimden secilir.
+document.querySelectorAll('input[type=date]').forEach(field => {
+  field.addEventListener('mousedown', e => {
+    e.preventDefault();
+    try { field.showPicker(); } catch { /* tarayici desteklemiyorsa simge yine calisir */ }
+  });
+});
+
+// --- ilk yükleme ---
+(async function () {
+  const meta = await api('/api/meta');
+  $('dbpath').textContent = meta.dbPath;
+  const opts = meta.repos.map(r => `<option value="${esc(r)}">${esc(r)}</option>`).join('');
+  $('todo-repo').innerHTML += opts;
+  $('work-repo').innerHTML += opts;
+  $('report-from').value = weekStart();
+  $('report-to').value = isoDate(new Date());
+  $('work-from').value = addDays(-7);
+  $('work-to').value = isoDate(new Date());
+  loadTodos();
+})();
+</script>
+</body>
+</html>
