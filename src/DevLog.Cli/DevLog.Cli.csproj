@@ -11,7 +11,7 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>devlog</ToolCommandName>
     <PackageId>DevLog.Cli</PackageId>
-    <Version>1.5.31</Version>
+    <Version>1.5.32</Version>
     <Authors>Sezer TANCI</Authors>
     <Description>Lokal yapilacak is (todo) ve calisma gunlugu (worklog) kaydi</Description>
   </PropertyGroup>
