@@ -18,7 +18,7 @@ kurulu olmayan bir makinede de aynen çalışır.
 
 ## Kurulum
 
-Gereken tek şey **.NET 9 SDK**'dır (`dotnet tool install` SDK ister, runtime yetmez):
+Gereken tek şey **.NET 10 SDK**'dır (`dotnet tool install` SDK ister, runtime yetmez):
 
 ```bash
 dotnet --list-sdks
